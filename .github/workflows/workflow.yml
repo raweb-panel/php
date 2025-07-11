@@ -1,0 +1,125 @@
+name: Build and Publish PHP Packages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  PHP_VERSION: "8.4.8"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        distro:
+          - name: debian11
+            image: debian:11
+            pkg_mgr: apt
+            ext: deb
+          - name: debian12
+            image: debian:12
+            pkg_mgr: apt
+            ext: deb
+          - name: ubuntu22
+            image: ubuntu:22.04
+            pkg_mgr: apt
+            ext: deb
+          - name: ubuntu24
+            image: ubuntu:24.04
+            pkg_mgr: apt
+            ext: deb
+          - name: almalinux8
+            image: almalinux:8
+            pkg_mgr: dnf
+            ext: rpm
+          - name: almalinux9
+            image: almalinux:9
+            pkg_mgr: dnf
+            ext: rpm
+
+    container:
+      image: ${{ matrix.distro.image }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          if [ "${{ matrix.distro.pkg_mgr }}" = "apt" ]; then
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y \
+              build-essential wget libcurl4-openssl-dev libsqlite3-dev libssl-dev \
+              zlib1g-dev libbz2-dev libjpeg-dev libpng-dev libwebp-dev \
+              libfreetype6-dev libxslt1-dev libzip-dev libonig-dev \
+              libsodium-dev libgmp-dev libicu-dev pkg-config ruby ruby-dev
+          else
+            yum update -y
+            os=$(grep ^ID= /etc/os-release | cut -d= -f2 | tr -d '"')
+            ver=$(grep ^VERSION_ID= /etc/os-release | cut -d= -f2 | cut -d. -f1 | tr -d '"')
+            if [ "$os" = "almalinux" ]; then
+                if [ "$ver" = "8" ]; then
+                    dnf install -y epel-release dnf-plugins-core
+                    dnf module enable -y ruby:3.0
+                    dnf config-manager --set-enabled powertools
+                    dnf clean all; dnf makecache; yum -y update
+                    dnf groupinstall -y "Development Tools"
+               elif [ "$ver" = "9" ]; then
+                    dnf install -y epel-release dnf-plugins-core
+                    dnf config-manager --set-enabled crb
+                    dnf clean all; dnf makecache; yum -y update
+                    dnf groupinstall -y "Development Tools"
+                fi
+            fi
+            dnf install -y \
+              wget libcurl-devel sqlite-devel openssl-devel \
+              zlib-devel bzip2-devel libjpeg-turbo-devel libpng-devel \
+              libwebp-devel freetype-devel libxslt-devel \
+              libzip-devel oniguruma-devel libsodium-devel \
+              gmp-devel libicu-devel pkgconf ruby ruby-devel
+          fi
+
+      - name: Build PHP ${{ env.PHP_VERSION }}
+        shell: bash
+        run: |
+          mkdir -p build
+          cd build
+          wget https://www.php.net/distributions/php-${PHP_VERSION}.tar.gz
+          tar -xzf php-${PHP_VERSION}.tar.gz
+          cd php-${PHP_VERSION}
+          export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig"
+          ./configure --prefix=/raweb/apps/php84 \
+                      --with-config-file-path=/raweb/apps/php84/etc \
+                      --with-config-file-scan-dir=/raweb/apps/php84/etc/conf.d \
+                      --with-fpm-user=raweb \
+                      --with-fpm-group=raweb
+          make -j$(nproc)
+          make install
+          cd ../..
+          mkdir -p /raweb/apps/php84/etc/conf.d
+
+      - name: Install fpm (for packaging)
+        run: gem install --no-document fpm
+
+      - name: Package into ${{ matrix.distro.ext }}
+        run: |
+          fpm -s dir \
+              -t ${{ matrix.distro.ext }} \
+              --name raweb-php84 \
+              --version ${PHP_VERSION} \
+              --architecture amd64 \
+              --description "PHP ${PHP_VERSION} for Raweb Panel (${{ matrix.distro.name }})" \
+              --after-install /dev/null \
+              --after-remove /dev/null \
+              /raweb=/raweb
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.distro.name }}-package
+          path: |
+            *.${{ matrix.distro.ext }}
