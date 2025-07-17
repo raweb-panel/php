@@ -1,542 +1,80 @@
-name: Build and Publish PHP Packages
+name: Multi-OS Package Builder
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
-
-env:
-  PHP_VERSION: "8.4.8"
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 0'
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ryzen9]
     strategy:
+      fail-fast: false
       matrix:
-        distro:
-          - name: debian11
-            image: debian:11
-            pkg_mgr: apt
-            ext: deb
-            distro_name: "Debian 11 Bullseye"
-            distro_version: "11"
-          - name: debian12
-            image: debian:12
-            pkg_mgr: apt
-            ext: deb
-            distro_name: "Debian 12 Bookworm"
-            distro_version: "12"
-          - name: ubuntu2204
-            image: ubuntu:22.04
-            pkg_mgr: apt
-            ext: deb
-            distro_name: "Ubuntu 22.04 Jammy"
-            distro_version: "22.04"
-          - name: ubuntu2404
-            image: ubuntu:24.04
-            pkg_mgr: apt
-            ext: deb
-            distro_name: "Ubuntu 24.04 Noble"
-            distro_version: "24.04"
+        include:
           - name: alma8
             image: almalinux:8
-            pkg_mgr: dnf
-            ext: rpm
-            distro_name: "AlmaLinux 8"
-            distro_version: "8"
+            code: el8
+            repo: alma
+            folder: packages
+            script: ./scripts/rpm/alma/8.sh
+
           - name: alma9
             image: almalinux:9
-            pkg_mgr: dnf
-            ext: rpm
-            distro_name: "AlmaLinux 9"
-            distro_version: "9"
+            code: el9
+            repo: alma
+            folder: packages
+            script: ./scripts/rpm/alma/9.sh
+
+          - name: debian11
+            image: debian:11
+            code: bullseye
+            repo: debian
+            folder: packages
+            script: ./scripts/deb/debian/11.sh
+
+          - name: debian12
+            image: debian:12
+            code: bookworm
+            repo: debian
+            folder: packages
+            script: ./scripts/deb/debian/12.sh
+
+          - name: ubuntu2204
+            image: ubuntu:22.04
+            code: jammy
+            repo: ubuntu
+            folder: packages
+            script: ./scripts/deb/ubuntu/22.04.sh
+
+          - name: ubuntu2404
+            image: ubuntu:24.04
+            code: noble
+            repo: ubuntu
+            folder: packages
+            script: ./scripts/deb/ubuntu/24.04.sh
 
     container:
-      image: ${{ matrix.distro.image }}
+      image: ${{ matrix.image }}
+      options: --privileged
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Install build dependencies
-        shell: bash
+      - name: Run Build Script
         run: |
-          if [ "${{ matrix.distro.pkg_mgr }}" = "apt" ]; then
-            apt-get update
-            DEBIAN_FRONTEND=noninteractive apt-get install -y \
-              build-essential wget libcurl4-openssl-dev libsqlite3-dev libssl-dev \
-              zlib1g-dev libbz2-dev libjpeg-dev libpng-dev libwebp-dev \
-              libfreetype6-dev libxslt1-dev libzip-dev libonig-dev \
-              libsodium-dev libgmp-dev libicu-dev pkg-config ruby ruby-dev curl
-          else
-            yum update -y
-            os=$(grep ^ID= /etc/os-release | cut -d= -f2 | tr -d '"')
-            ver=$(grep ^VERSION_ID= /etc/os-release | cut -d= -f2 | cut -d. -f1 | tr -d '"')
-            if [ "$os" = "almalinux" ]; then
-                if [ "$ver" = "8" ]; then
-                    dnf install -y epel-release dnf-plugins-core
-                    dnf module enable -y ruby:3.0
-                    dnf config-manager --set-enabled powertools
-                    dnf clean all; dnf makecache; yum -y update
-                    dnf groupinstall -y "Development Tools"
-               elif [ "$ver" = "9" ]; then
-                    dnf install -y epel-release dnf-plugins-core
-                    dnf config-manager --set-enabled crb
-                    dnf clean all; dnf makecache; yum -y update
-                    dnf groupinstall -y "Development Tools"
-                fi
-            fi
-            dnf install -y --allowerasing \
-              wget libcurl-devel sqlite-devel openssl-devel \
-              zlib-devel bzip2-devel libjpeg-turbo-devel libpng-devel \
-              libwebp-devel freetype-devel libxslt-devel \
-              libzip-devel oniguruma-devel libsodium-devel \
-              gmp-devel libicu-devel pkgconf ruby ruby-devel curl
-          fi
-
-      - name: Build PHP ${{ env.PHP_VERSION }}
-        shell: bash
-        run: |
-          if [[ "${{ matrix.distro.name }}" == "alma8" ]]; then
-              export CFLAGS="-fPIC"
-              export CXXFLAGS="-fPIC"
-              export LDFLAGS="-static-libgcc -pie"
-          else
-              export LDFLAGS="-static-libgcc"
-          fi
-          mkdir -p build
-          cd build
-          wget https://www.php.net/distributions/php-${PHP_VERSION}.tar.gz
-          tar -xzf php-${PHP_VERSION}.tar.gz
-          cd php-${PHP_VERSION}
-
-          export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig"
-
-          ./configure --prefix=/raweb/apps/php84 \
-                      --with-config-file-path=/raweb/apps/php84/etc \
-                      --with-config-file-scan-dir=/raweb/apps/php84/etc/conf.d \
-                      --with-fpm-user=raweb \
-                      --with-fpm-group=raweb \
-                      --enable-mbstring \
-                      --enable-fpm \
-                      --with-zlib \
-                      --with-bz2 \
-                      --with-iconv \
-                      --with-curl \
-                      --with-zip \
-                      --with-mysqli \
-                      --with-pdo-mysql \
-                      --with-jpeg \
-                      --with-webp \
-                      --with-freetype \
-                      --with-xsl \
-                      --with-gettext \
-                      --with-pear \
-                      --with-sodium \
-                      --with-openssl \
-                      --with-gmp \
-                      --enable-bcmath \
-                      --enable-sockets \
-                      --enable-pcntl \
-                      --enable-sysvshm \
-                      --enable-sysvsem \
-                      --enable-sysvmsg \
-                      --enable-shmop \
-                      --enable-exif \
-                      --enable-calendar \
-                      --enable-pdo \
-                      --enable-mbregex \
-                      --enable-ctype \
-                      --enable-session \
-                      --enable-filter \
-                      --enable-xml \
-                      --enable-dom \
-                      --enable-simplexml \
-                      --enable-tokenizer \
-                      --enable-ftp \
-                      --enable-xmlreader \
-                      --enable-xmlwriter \
-                      --enable-phar \
-                      --enable-intl \
-                      --enable-soap \
-                      --without-sqlite3 \
-                      --without-pdo-sqlite \
-                      --with-libdir=/lib64 \
-                      --disable-rpath
-
-          make -j$(nproc)
-          make install
-          cd ../..
-
-      - name: Create PHP configuration
-        shell: bash
-        run: |
-          mkdir -p /raweb/apps/php84/etc/conf.d
-          cat > /raweb/apps/php84/etc/php.ini << 'PHPINI'
-          [PHP]
-          engine = On
-          short_open_tag = Off
-          precision = 14
-          output_buffering = 4096
-          zlib.output_compression = Off
-          implicit_flush = Off
-          unserialize_callback_func =
-          serialize_precision = -1
-          disable_functions =
-          disable_classes =
-          zend.enable_gc = On
-          zend.exception_ignore_args = On
-          expose_php = Off
-          max_execution_time = 30
-          max_input_time = 60
-          memory_limit = 128M
-          error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
-          display_errors = Off
-          display_startup_errors = Off
-          log_errors = On
-          log_errors_max_len = 1024
-          ignore_repeated_errors = Off
-          ignore_repeated_source = Off
-          report_memleaks = On
-          variables_order = "GPCS"
-          request_order = "GP"
-          register_argc_argv = Off
-          auto_globals_jit = On
-          post_max_size = 8M
-          auto_prepend_file =
-          auto_append_file =
-          default_mimetype = "text/html"
-          default_charset = "UTF-8"
-          doc_root =
-          user_dir =
-          enable_dl = Off
-          file_uploads = On
-          upload_max_filesize = 2M
-          max_file_uploads = 20
-          allow_url_fopen = On
-          allow_url_include = Off
-          default_socket_timeout = 60
-
-          [CLI Server]
-          cli_server.color = On
-
-          [Date]
-
-          [filter]
-
-          [iconv]
-
-          [imap]
-
-          [intl]
-
-          [sqlite3]
-
-          [Pcre]
-
-          [Pdo]
-
-          [Pdo_mysql]
-          default_socket=
-
-          [Phar]
-
-          [mail function]
-          SMTP = localhost
-          smtp_port = 25
-          mail.add_x_header = Off
-
-          [ODBC]
-          odbc.allow_persistent = On
-          odbc.check_persistent = On
-          odbc.max_persistent = -1
-          odbc.max_links = -1
-          odbc.defaultlrl = 4096
-          odbc.defaultbinmode = 1
-
-          [Interbase]
-          ibase.allow_persistent = 1
-          ibase.max_persistent = -1
-          ibase.max_links = -1
-
-          [MySQLi]
-          mysqli.max_persistent = -1
-          mysqli.allow_persistent = On
-          mysqli.max_links = -1
-          mysqli.default_port = 3306
-          mysqli.default_socket =
-          mysqli.default_host =
-          mysqli.default_user =
-          mysqli.default_pw =
-          mysqli.reconnect = Off
-
-          [mysqlnd]
-          mysqlnd.collect_statistics = On
-          mysqlnd.collect_memory_statistics = Off
-
-          [OCI8]
-
-          [PostgreSQL]
-          pgsql.allow_persistent = On
-          pgsql.auto_reset_persistent = Off
-          pgsql.max_persistent = -1
-          pgsql.max_links = -1
-          pgsql.ignore_notice = 0
-          pgsql.log_notice = 0
-
-          [bcmath]
-          bcmath.scale = 0
-
-          [browscap]
-
-          [Session]
-          session.save_handler = files
-          session.use_strict_mode = 0
-          session.use_cookies = 1
-          session.use_only_cookies = 1
-          session.name = PHPSESSID
-          session.auto_start = 0
-          session.cookie_lifetime = 0
-          session.cookie_path = /
-          session.cookie_domain =
-          session.cookie_httponly =
-          session.cookie_samesite =
-          session.serialize_handler = php
-          session.gc_probability = 0
-          session.gc_divisor = 1000
-          session.gc_maxlifetime = 1440
-          session.referer_check =
-          session.cache_limiter = nocache
-          session.cache_expire = 180
-          session.use_trans_sid = 0
-          session.sid_length = 26
-          session.trans_sid_tags = "a=href,area=href,frame=src,form="
-          session.sid_bits_per_character = 5
-
-          [Assertion]
-          zend.assertions = -1
-
-          [COM]
-
-          [mbstring]
-
-          [gd]
-
-          [exif]
-
-          [Tidy]
-          tidy.clean_output = Off
-
-          [soap]
-          soap.wsdl_cache_enabled=1
-          soap.wsdl_cache_dir="/tmp"
-          soap.wsdl_cache_ttl=86400
-          soap.wsdl_cache_limit = 5
-
-          [sysvshm]
-
-          [ldap]
-          ldap.max_links = -1
-
-          [dba]
-
-          [opcache]
-
-          [curl]
-
-          [openssl]
-          PHPINI
-
-      - name: Build DEB package
-        if: matrix.distro.pkg_mgr == 'apt'
-        shell: bash
-        run: |
-          # Create package directory structure
-          mkdir -p deb-package/raweb-php84/DEBIAN
-
-          # Copy PHP installation
-          cp -r /raweb deb-package/raweb-php84/
-
-          # Determine dependencies based on distro
-          if [[ "${{ matrix.distro.name }}" == "debian11" ]]; then
-            DEPENDS="libxml2, libssl1.1, libcurl4, libbz2-1.0, libjpeg62-turbo, libpng16-16, libwebp6, libfreetype6, libxslt1.1, libzip4, libonig5, libsodium23, libgmp10, libicu67, default-libmysqlclient-dev, zlib1g, libsqlite3-0"
-          elif [[ "${{ matrix.distro.name }}" == "debian12" ]]; then
-            DEPENDS="libxml2, libssl3, libcurl4, libbz2-1.0, libjpeg62-turbo, libpng16-16, libwebp7, libfreetype6, libxslt1.1, libzip4, libonig5, libsodium23, libgmp10, libicu72, default-libmysqlclient-dev, zlib1g, libsqlite3-0"
-          elif [[ "${{ matrix.distro.name }}" == "ubuntu2204" ]]; then
-            DEPENDS="libxml2, libssl3, libcurl4, libbz2-1.0, libjpeg-turbo8, libpng16-16, libwebp7, libfreetype6, libxslt1.1, libzip4, libonig5, libsodium23, libgmp10, libicu70, libmysqlclient21, zlib1g, libsqlite3-0"
-          elif [[ "${{ matrix.distro.name }}" == "ubuntu2404" ]]; then
-            DEPENDS="libxml2, libssl3, libcurl4, libbz2-1.0, libjpeg-turbo8, libpng16-16, libwebp7, libfreetype6, libxslt1.1, libzip4, libonig5, libsodium23, libgmp10, libicu74, libmysqlclient21, zlib1g, libsqlite3-0"
-          fi
-
-          # Create control file
-          cat > deb-package/raweb-php84/DEBIAN/control << EOF
-          Package: raweb-php84
-          Version: ${{ env.PHP_VERSION }}
-          Section: web
-          Priority: optional
-          Architecture: amd64
-          Maintainer: Raweb Panel <cd@julio.al>
-          Description: PHP ${{ env.PHP_VERSION }} for Raweb Panel (${{ matrix.distro.distro_name }})
-           Custom compiled PHP ${{ env.PHP_VERSION }} with extensions for Raweb Panel
-           Built for ${{ matrix.distro.distro_name }}
-           Includes optimized configuration
-          Depends: ${DEPENDS}
-          EOF
-
-          # Create postinst script
-          cat > deb-package/raweb-php84/DEBIAN/postinst << 'EOF'
-          #!/bin/bash
-          set -e
-
-          # Create raweb user if it doesn't exist
-          if ! id "raweb" &>/dev/null; then
-              useradd -r -s /bin/false raweb
-          fi
-
-          # Set proper permissions
-          chown -R root:root /raweb/apps/php84
-          chmod -R 755 /raweb/apps/php84
-
-          echo "PHP ${{ env.PHP_VERSION }} installed successfully at /raweb/apps/php84"
-          echo "PHP binary: /raweb/apps/php84/bin/php"
-          echo "PHP-FPM binary: /raweb/apps/php84/sbin/php-fpm"
-          echo "Configuration: /raweb/apps/php84/etc/php.ini"
-          EOF
-
-          # Create postrm script
-          cat > deb-package/raweb-php84/DEBIAN/postrm << 'EOF'
-          #!/bin/bash
-          set -e
-
-          # Remove PHP installation directory if empty
-          if [ -d "/raweb/apps/php84" ] && [ -z "$(ls -A /raweb/apps/php84)" ]; then
-              rmdir /raweb/apps/php84
-          fi
-
-          if [ -d "/raweb/apps" ] && [ -z "$(ls -A /raweb/apps)" ]; then
-              rmdir /raweb/apps
-          fi
-
-          echo "PHP ${{ env.PHP_VERSION }} removed successfully"
-          EOF
-
-          # Make scripts executable
-          chmod +x deb-package/raweb-php84/DEBIAN/postinst
-          chmod +x deb-package/raweb-php84/DEBIAN/postrm
-
-          # Build the package
-          dpkg-deb --build deb-package/raweb-php84
-          mv deb-package/raweb-php84.deb raweb-php84_${{ env.PHP_VERSION }}_${{ matrix.distro.name }}_amd64.deb
-
-      - name: Build RPM package
-        if: matrix.distro.pkg_mgr == 'dnf'
-        shell: bash
-        run: |
-          # Create RPM build directory structure
-          cd /
-          mkdir -p rpmbuild
-          mkdir -p rpmbuild/BUILD
-          mkdir -p rpmbuild/BUILDROOT
-          mkdir -p rpmbuild/RPMS
-          mkdir -p rpmbuild/SOURCES
-          mkdir -p rpmbuild/SPECS
-          mkdir -p rpmbuild/SRPMS
-          tar -czf /rpmbuild/SOURCES/php84.tar.gz /raweb
-
-          # Determine dependencies based on distro
-          if [[ "${{ matrix.distro.name }}" == "alma8" ]]; then
-            REQUIRES="glibc >= 2.17, libxml2, openssl-libs, bzip2-libs, libjpeg-turbo, libpng, libwebp, freetype, libxslt, libzip, oniguruma, gmp, libicu, mysql-libs, zlib, sqlite"
-          elif [[ "${{ matrix.distro.name }}" == "alma9" ]]; then
-            REQUIRES="glibc >= 2.28, libxml2, openssl-libs, bzip2-libs, libjpeg-turbo, libpng, libwebp, freetype, libxslt, libzip, oniguruma, gmp, libicu, mariadb-connector-c, zlib, sqlite"
-          fi
-
-          # Generate current date for changelog
-          CURRENT_DATE=$(date "+%a %b %d %Y")
-
-          # Create spec file
-          cat > rpmbuild/SPECS/raweb-php84.spec << EOF
-          Name:           raweb-php84
-          Version:        ${{ env.PHP_VERSION }}
-          Release:        1
-          Summary:        PHP ${{ env.PHP_VERSION }} for Raweb Panel
-          License:        Custom
-          URL:            https://github.com/raweb-panel/php
-          BuildArch:      x86_64
-          Source0:        php84.tar.gz
-          AutoReqProv:    no
-          Requires:       ${REQUIRES}
-
-          %description
-          Custom compiled PHP ${{ env.PHP_VERSION }} with extensions for Raweb Panel
-          Built for ${{ matrix.distro.distro_name }}
-          Includes optimized configuration
-
-          %prep
-          %setup -c -n raweb
-
-          %build
-          # No build needed
-
-          %install
-          mkdir -p %{buildroot}
-          cp -r * %{buildroot}/
-
-          %files
-          /raweb/apps/php84
-
-          %pre
-          if ! id raweb &>/dev/null; then
-              useradd -r -s /bin/false raweb
-          fi
-
-          %post
-          chown -R root:root /raweb/apps/php84
-          chmod -R 755 /raweb/apps/php84
-          echo "PHP ${{ env.PHP_VERSION }} installed successfully at /raweb/apps/php84"
-          echo "PHP binary: /raweb/apps/php84/bin/php"
-          echo "PHP-FPM binary: /raweb/apps/php84/sbin/php-fpm"
-          echo "Configuration: /raweb/apps/php84/etc/php.ini"
-
-          %postun
-          if [ -d "/raweb/apps/php84" ] && [ -z "\$(ls -A /raweb/apps/php84)" ]; then
-              rmdir /raweb/apps/php84
-          fi
-          if [ -d "/raweb/apps" ] && [ -z "\$(ls -A /raweb/apps)" ]; then
-              rmdir /raweb/apps
-          fi
-
-          %changelog
-          * ${CURRENT_DATE} GitHub Actions <cd@julio.al> - ${{ env.PHP_VERSION }}-1
-          - Automated build of PHP ${{ env.PHP_VERSION }} for ${{ matrix.distro.distro_name }}
-          EOF
-
-          # Build RPM
-          rpmbuild --define "_topdir /rpmbuild" --define "debug_package %{nil}" -ba rpmbuild/SPECS/raweb-php84.spec
-
-          # Move RPM to expected location
-          mv /rpmbuild/RPMS/x86_64/raweb-php84-${{ env.PHP_VERSION }}-1.x86_64.rpm \
-             raweb-php84-${{ env.PHP_VERSION }}-1.${{ matrix.distro.name }}.x86_64.rpm
-
-      - name: Upload to Repository
-        shell: bash
-        run: |
-          if [ "${{ matrix.distro.ext }}" = "deb" ]; then
-            chmod 755 raweb-php84* || true
-            ls -lh raweb-php84*
-            PACKAGE_FILE="raweb-php84_${{ env.PHP_VERSION }}_${{ matrix.distro.name }}_amd64.deb"
-            curl -X POST \
-              -H "Authorization: Bearer ${{ secrets.UPLOAD_TOKEN }}" \
-              -F "file=@${PACKAGE_FILE}" \
-              -F "distribution=${{ matrix.distro.name }}" \
-              https://repo.julio.al/upload/deb
-          else
-            chmod 755 /raweb-php84* || true
-            ls -lh /raweb-php84*
-            PACKAGE_FILE="/raweb-php84-${{ env.PHP_VERSION }}-1.${{ matrix.distro.name }}.x86_64.rpm"
-            curl -X POST \
-              -H "Authorization: Bearer ${{ secrets.UPLOAD_TOKEN }}" \
-              -F "file=@${PACKAGE_FILE}" \
-              -F "distribution=${{ matrix.distro.name }}" \
-              https://repo.julio.al/upload/rpm
-          fi
+          chmod +x ${{ matrix.script }}
+          ${{ matrix.script }}
+        env:
+          BUILD_NAME: ${{ matrix.name }}
+          BUILD_IMAGE: ${{ matrix.image }}
+          BUILD_CODE: ${{ matrix.code }}
+          BUILD_REPO: ${{ matrix.repo }}
+          BUILD_FOLDER: ${{ matrix.folder }}
+          UPLOAD_USER: ${{ secrets.UPLOAD_USER }}
+          UPLOAD_PASS: ${{ secrets.UPLOAD_PASS }}
+          PHP_VERSION_MAJOR: '8.4'

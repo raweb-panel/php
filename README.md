@@ -4,17 +4,18 @@
 - Ubuntu 24.04/22.04.
 - AlmaLinux 9/8.
 
-Debian Based.
+Debian/Ubuntu.
 ```bash
-apt update; apt install -y wget apt-transport-https ca-certificates gnupg2 sudo
+apt update; apt-get -y upgrade; apt-get -y install wget apt-transport-https ca-certificates gnupg2 sudo
 echo "deb [trusted=yes] https://repo.julio.al/ $(cat /etc/os-release | grep VERSION_CODENAME= | cut -d= -f2) main" | sudo tee /etc/apt/sources.list.d/raweb.list
 sudo apt update; sudo apt install -y raweb-php84
+
 ```
 
-AlmaLinux Based.
+AlmaLinux 9.
 ```bash
-sudo dnf install -y wget ca-certificates gnupg2
-# For AlmaLinux 9:
+dnf -y update; dnf install -y wget ca-certificates gnupg2 epel-release sudo; dnf module enable mysql:8.4 -y
+
 sudo tee /etc/yum.repos.d/raweb.repo << 'EOF'
 [raweb-alma9]
 name=Raweb Panel Repository for AlmaLinux 9
@@ -23,7 +24,14 @@ enabled=1
 gpgcheck=0
 EOF
 
-# For AlmaLinux 8, use the following instead:
+# Install
+sudo dnf makecache; sudo dnf -y install raweb-php84
+```
+
+AlmaLinux 8.
+```bash
+dnf -y update; dnf install -y wget ca-certificates gnupg2 epel-release sudo
+
 sudo tee /etc/yum.repos.d/raweb.repo << 'EOF'
 [raweb-alma8]
 name=Raweb Panel Repository for AlmaLinux 8
@@ -32,9 +40,12 @@ enabled=1
 gpgcheck=0
 EOF
 
-# Update repository cache
-sudo dnf makecache
-
-# Install package
-sudo dnf install raweb-php84
+# Install
+sudo dnf makecache; sudo dnf -y install raweb-php84
 ```
+
+---
+
+## To-Do List
+
+- [ ] Custom build libs to avoid conflicts with system libs.

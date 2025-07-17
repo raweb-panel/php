@@ -1,0 +1,12 @@
+[Unit]
+Description=Raweb PHP 8.4 FPM service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/raweb/apps/php84/sbin/php-fpm --nodaemonize --fpm-config /raweb/apps/php84/etc/php-fpm.conf
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
