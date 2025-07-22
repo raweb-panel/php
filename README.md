@@ -7,7 +7,7 @@
 Debian/Ubuntu.
 ```bash
 apt update; apt-get -y upgrade; apt-get -y install wget apt-transport-https ca-certificates gnupg2 sudo
-echo "deb [trusted=yes] https://repo.julio.al/ $(cat /etc/os-release | grep VERSION_CODENAME= | cut -d= -f2) main" | sudo tee /etc/apt/sources.list.d/raweb.list
+echo "deb [arch=amd64 trusted=yes] https://repo.julio.al/ $(cat /etc/os-release | grep VERSION_CODENAME= | cut -d= -f2) main" | sudo tee /etc/apt/sources.list.d/raweb.list
 sudo apt update; sudo apt install -y raweb-php84
 
 ```
