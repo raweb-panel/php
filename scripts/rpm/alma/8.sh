@@ -46,7 +46,7 @@ echo "Installing reqs..." && dnf install -y --allowerasing \
             libzip-devel oniguruma-devel libsodium-devel \
             gmp-devel libicu-devel pkgconf ruby ruby-devel curl jq zip unzip rpm-build rsync > /dev/null 2>&1
 # ====================================================================================
-mkdir -p $GITHUB_WORKSPACE/build; cd $GITHUB_WORKSPACE/build; wget https://www.php.net/distributions/php-${LATEST_PHP_VERSION}.tar.gz >/dev/null 2>&1; tar -xzf php-${LATEST_PHP_VERSION}.tar.gz; rm -rf php-${LATEST_PHP_VERSION}.tar.gz
+mkdir -p $GITHUB_WORKSPACE/build; cd $GITHUB_WORKSPACE/build; wget https://www.php.net/distributions/php-${LATEST_PHP_VERSION}.tar.gz; tar -xzf php-${LATEST_PHP_VERSION}.tar.gz; rm -rf php-${LATEST_PHP_VERSION}.tar.gz
 cd $GITHUB_WORKSPACE/build/php-${LATEST_PHP_VERSION}; useradd raweb
 # ====================================================================================
 ./configure --prefix=/raweb/apps/php84 \

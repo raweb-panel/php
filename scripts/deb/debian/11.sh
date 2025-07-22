@@ -39,7 +39,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
                                        libfreetype6-dev libxslt1-dev libzip-dev libonig-dev \
                                        libsodium-dev libgmp-dev libicu-dev pkg-config ruby ruby-dev sudo wget curl zip unzip jq rsync > /dev/null 2>&1
 # ====================================================================================
-mkdir -p $GITHUB_WORKSPACE/build; cd $GITHUB_WORKSPACE/build; wget https://www.php.net/distributions/php-${LATEST_PHP_VERSION}.tar.gz > /dev/null 2>&1; tar -xzf php-${LATEST_PHP_VERSION}.tar.gz > /dev/null 2>&1; rm -rf php-${LATEST_PHP_VERSION}.tar.gz
+mkdir -p $GITHUB_WORKSPACE/build; cd $GITHUB_WORKSPACE/build; wget https://www.php.net/distributions/php-${LATEST_PHP_VERSION}.tar.gz; tar -xzf php-${LATEST_PHP_VERSION}.tar.gz; rm -rf php-${LATEST_PHP_VERSION}.tar.gz
 cd $GITHUB_WORKSPACE/build/php-${LATEST_PHP_VERSION}; useradd raweb
 # ====================================================================================
 ./configure --prefix=/raweb/apps/php84 \

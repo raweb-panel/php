@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    runs-on: [self-hosted, ryzen9]
+    runs-on: [self-hosted, temp]
     strategy:
       fail-fast: false
       matrix:
