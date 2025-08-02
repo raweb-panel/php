@@ -4,6 +4,8 @@ if [ -z "$UPLOAD_USER" ] || [ -z "$UPLOAD_PASS" ]; then
     echo "Missing UPLOAD_USER or UPLOAD_PASS"
     exit 1
 fi
+echo "Alma 9 is not working properly, anyone is welcome to test build and PR a fix"
+exit 0
 # ====================================================================================
 TOTAL_CORES=$(nproc)
 if [[ "$BUILD_CORES" =~ ^[0-9]+$ ]] && [ "$BUILD_CORES" -le 100 ]; then
@@ -13,30 +15,15 @@ else
   CORES=${BUILD_CORES:-$TOTAL_CORES}
 fi
 # ====================================================================================
-export CFLAGS="-fPIC"
-export CXXFLAGS="-fPIC"
-export LDFLAGS="-static-libgcc -pie"
+export LDFLAGS="-static-libgcc"
 export PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig"
 # ====================================================================================
 echo "Updating..." && dnf -y update > /dev/null 2>&1
 echo "Installing curl..." && dnf install --allowerasing -y epel-release curl jq > /dev/null 2>&1
 # ====================================================================================
-RPM_PACKAGE_NAME="raweb-php84"
-RPM_ARCH="x86_64"
-RPM_DIST="$BUILD_CODE"
-LATEST_PHP_VERSION=$(curl -s "https://www.php.net/releases/index.php?json&version=${PHP_VERSION_MAJOR}" | jq -r '.version')
-RPM_PACKAGE_FILE_NAME="${RPM_PACKAGE_NAME}-${LATEST_PHP_VERSION}-${RPM_DIST}.${RPM_ARCH}.rpm"
-RPM_REPO_URL="https://$DOMAIN/$UPLOAD_USER/$BUILD_REPO/${RPM_DIST}/"
-# ====================================================================================
-if curl -s "$RPM_REPO_URL" | grep -q "$RPM_PACKAGE_FILE_NAME"; then
-    echo "✅ Package $RPM_PACKAGE_FILE_NAME already exists. Skipping build."
-    exit 0
-fi
-# ====================================================================================
-dnf install -y epel-release dnf-plugins-core > /dev/null 2>&1
-dnf module enable -y ruby:3.0
-dnf config-manager --set-enabled powertools
-echo "Makecache..." && dnf clean all; dnf makecache; yum -y update > /dev/null 2>&1
+echo "Installing epel-release..." && dnf install -y epel-release dnf-plugins-core > /dev/null 2>&1
+echo "Enable crb..." && dnf config-manager --set-enabled crb
+echo "Make Cache..." && dnf clean all; dnf makecache; yum -y update > /dev/null 2>&1
 echo "Installing dev tools..." && dnf groupinstall -y "Development Tools" > /dev/null 2>&1
 # ====================================================================================
 echo "Installing reqs..." && dnf install -y --allowerasing \
@@ -44,7 +31,7 @@ echo "Installing reqs..." && dnf install -y --allowerasing \
             zlib-devel bzip2-devel libjpeg-turbo-devel libpng-devel \
             libwebp-devel freetype-devel libxslt-devel \
             libzip-devel oniguruma-devel libsodium-devel \
-            gmp-devel libicu-devel pkgconf ruby ruby-devel curl jq zip unzip rpm-build rsync > /dev/null 2>&1
+            gmp-devel libicu-devel pkgconf ruby ruby-devel curl jq zip unzip rpm-build rsync >/dev/null 2>&1
 # ====================================================================================
 mkdir -p $GITHUB_WORKSPACE/build; cd $GITHUB_WORKSPACE/build; wget https://www.php.net/distributions/php-${LATEST_PHP_VERSION}.tar.gz; tar -xzf php-${LATEST_PHP_VERSION}.tar.gz; rm -rf php-${LATEST_PHP_VERSION}.tar.gz
 cd $GITHUB_WORKSPACE/build/php-${LATEST_PHP_VERSION}; useradd raweb
