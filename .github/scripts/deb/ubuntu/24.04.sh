@@ -116,6 +116,24 @@ mkdir -p "$DEB_ROOT/DEBIAN"
 cp -a /raweb/apps/php84 "$DEB_ROOT/raweb/apps/"
 cp $GITHUB_WORKSPACE/static/raweb-php84.service "$DEB_ROOT/etc/systemd/system/"
 # ====================================================================================
+# Install Composer into the package so it is included in the .deb
+echo "Installing Composer into package..."
+EXPECTED_SIGNATURE="$(curl -s https://composer.github.io/installer.sig)"
+php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+ACTUAL_SIGNATURE="$(php -r "echo hash_file('sha384', 'composer-setup.php');")"
+if [ "$EXPECTED_SIGNATURE" != "$ACTUAL_SIGNATURE" ]; then
+    >&2 echo 'ERROR: Invalid installer signature'
+    rm composer-setup.php
+    exit 1
+fi
+php composer-setup.php --install-dir="$DEB_ROOT/raweb/apps/php84/bin" --filename=composer
+RESULT=$?
+rm composer-setup.php
+if [ $RESULT -ne 0 ]; then
+    >&2 echo 'ERROR: Composer installation failed'
+    exit 1
+fi
+# ====================================================================================
 cat > "$DEB_ROOT/DEBIAN/control" <<EOF
 Package: $DEB_PACKAGE_NAME
 Version: $PHP_PACK_VERSION
